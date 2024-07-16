@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body></body>
+</html>
+<script>
+  // 注册副作用函数
+  let activeEffect;
+  function effect(fn, options) {
+    const effectFn = () => {
+      activeEffect = effectFn; // activeEffect = fn，会造成activeEffect始终为最后一个副作用函数
+      const res = fn();
+
+      return res;
+    };
+    if (!options.lazy) {
+      effectFn();
+    }
+    effectFn.options = options;
+
+    return effectFn;
+  }
+  const data = { text: "my name is jsw" };
+
+  // bucket(weakMap[target, map]) -> target1(map[key1, set]) -> key1(set[effect])
+  // 用proxy生成代理数据
+  const bucket = new WeakMap();
+  function track(target, key) {
+    if (!activeEffect) {
+      return;
+    }
+    let depsMap = bucket.get(target);
+    if (!depsMap) {
+      bucket.set(target, (depsMap = new Map()));
+    }
+
+    let deps = depsMap.get(key);
+    if (!deps) {
+      depsMap.set(key, (deps = new Set()));
+    }
+
+    deps.add(activeEffect);
+  }
+  function trigger(target, key) {
+    const depsMap = bucket.get(target);
+    if (!depsMap) return;
+    const effects = depsMap.get(key);
+    const effectsToRun = new Set();
+    effects.forEach((effect) => {
+      if (activeEffect !== effect) {
+        effectsToRun.add(effect);
+      }
+      effectsToRun.add(effect);
+    });
+
+    effectsToRun.forEach((effect) => {
+      if (effect.options && effect.options.scheduler) {
+        effect.options.scheduler(effect);
+      } else {
+        effect();
+      }
+    });
+  }
+  const obj = new Proxy(data, {
+    get(target, key) {
+      track(target, key);
+      return target[key];
+    },
+    set(target, key, newVal) {
+      target[key] = newVal;
+      trigger(target, key);
+    },
+  });
+
+  //   function setInnerText() {
+  //     document.body.innerText = obj.text;
+  //   }
+  //   effect(setInnerText);
+
+  //   setTimeout(() => {
+  //     obj.text = "my wife is jgg";
+  //   }, 2000);
+  const jobQueue = new Set();
+  const p = Promise.resolve();
+
+  let isFlushing = false;
+  function flushJob() {
+    if (isFlushing) {
+      return;
+    }
+
+    isFlushing = true;
+
+    p.then(() => {
+      jobQueue.forEach((job) => job());
+    }).finally(() => {
+      isFlushing = false;
+    });
+  }
+
+  function watch(source, cb, options) {
+    let oldVal, newVal;
+
+    const job = () => {
+      newVal = effectFn();
+      cb(newVal, oldVal);
+      oldVal = newVal;
+    };
+
+    const effectFn = effect(source, {
+      lazy: true,
+      scheduler() {
+        // jobQueue.add(fn);
+        // flushJob();
+        job();
+      },
+    });
+
+    if (options.immediate) {
+      job();
+    } else {
+      oldVal = effectFn();
+    }
+    console.log(oldVal);
+  }
+
+  watch(
+    () => obj.text,
+    (newVal, oldVal) => {
+      console.log("watch回调函数执行了", newVal, oldVal);
+    },
+    {
+      immediate: true,
+    }
+  );
+
+  setTimeout(() => {
+    obj.text = "aaa";
+  }, 2000);
+</script>

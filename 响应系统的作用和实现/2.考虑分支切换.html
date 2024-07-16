@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body></body>
+</html>
+<script>
+  //
+  function cleanup(effectFn) {
+    for (var i = 0; i < effectFn.deps.length; i++) {
+      const deps = effectFn.deps[i];
+
+      deps.delete(effectFn);
+    }
+  }
+  // 注册副作用函数
+  let activeEffect;
+  function effect(fn) {
+    const effectFn = () => {
+      cleanup(effectFn); // 执行副作用函数先清除一次，保证还有意义的副作用函数执行
+      activeEffect = effectFn; // activeEffect = fn，会造成activeEffect始终为最后一个副作用函数
+
+      fn();
+    };
+    effectFn.deps = []; // 存储对应的副作用函数集合
+    effectFn();
+  }
+  const data = { text: "my name is jsw", ok: true };
+
+  // bucket(weakMap[target, map]) -> target1(map[key1, set]) -> key1(set[effect])
+  // 用proxy生成代理数据
+  const bucket = new WeakMap();
+  const obj = new Proxy(data, {
+    get(target, key) {
+      if (!activeEffect) {
+        return;
+      }
+      let depsMap = bucket.get(target);
+      if (!depsMap) {
+        bucket.set(target, (depsMap = new Map()));
+      }
+
+      let deps = depsMap.get(key); // 每个key值对应一个deps,deps是该key值所对应的副作用函数
+      if (!deps) {
+        depsMap.set(key, (deps = new Set()));
+      }
+      activeEffect.deps.push(deps);
+
+      deps.add(activeEffect);
+      //   console.log(deps);
+      return target[key];
+    },
+    set(target, key, newVal) {
+      target[key] = newVal;
+
+      const depsMap = bucket.get(target);
+      if (!depsMap) return;
+      const effects = depsMap.get(key);
+
+      const effectsToRun = new Set(effects);
+      effectsToRun.forEach((effect) => effect());
+    },
+  });
+
+  function setInnerText() {
+    console.log("setInnerText");
+    document.body.innerText = obj.ok ? obj.text : "not"; // ok为false的时候，obj.text对应的副作用函数不应该在执行
+  }
+  effect(setInnerText);
+
+  setTimeout(() => {
+    obj.ok = false;
+    // set -> effect -> 清空effect -> 执行副作用函数 -> get -> deps.add
+  }, 2000);
+  setTimeout(() => {
+    obj.text = "my wift is jgg";
+    // set -> effect -> 清空effect -> 执行副作用函数 -> get -> deps.add
+  }, 5000);
+</script>

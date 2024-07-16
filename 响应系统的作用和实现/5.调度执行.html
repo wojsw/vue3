@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="title"></div>
+    <div id="text"></div>
+  </body>
+</html>
+<script>
+  // 注册副作用函数
+  let activeEffect;
+  function effect(fn, options = {}) {
+    const effectFn = () => {
+      activeEffect = effectFn; // activeEffect = fn，会造成activeEffect始终为最后一个副作用函数
+      fn();
+    };
+    effectFn.options = options;
+
+    effectFn();
+  }
+  const data = { text: "my name is jsw", title: "i am title" };
+
+  // bucket(weakMap[target, map]) -> target1(map[key1, set]) -> key1(set[effect])
+  // 用proxy生成代理数据
+  const bucket = new WeakMap();
+  const obj = new Proxy(data, {
+    get(target, key) {
+      if (!activeEffect) {
+        return;
+      }
+      let depsMap = bucket.get(target);
+      if (!depsMap) {
+        bucket.set(target, (depsMap = new Map()));
+      }
+
+      let deps = depsMap.get(key);
+      if (!deps) {
+        depsMap.set(key, (deps = new Set()));
+      }
+      deps.add(activeEffect);
+
+      return target[key];
+    },
+    set(target, key, newVal) {
+      target[key] = newVal;
+
+      const depsMap = bucket.get(target);
+      if (!depsMap) return;
+      const effects = depsMap.get(key);
+      effects.forEach((effect) => {
+        if (effect.options.scheduler) {
+          effect.options.scheduler(effect);
+        } else {
+          effect();
+        }
+      });
+    },
+  });
+
+  function setInnerText() {
+    document.getElementById("text").textContent = obj.text;
+  }
+  function setTitle() {
+    document.getElementById("title").textContent = obj.title;
+  }
+
+  const jobQueue = new Set();
+  const p = Promise.resolve();
+
+  let isFlushing = false;
+  function flushJob() {
+    console.log('bbbb', obj.title);
+    if (isFlushing) {
+      return;
+    }
+
+    isFlushing = true;
+
+    p.then(() => {
+      console.log("flush job", obj.title, obj.text);
+      jobQueue.forEach((job) => job());
+    }).finally(() => {
+      console.log('aaa');
+      isFlushing = false;
+    });
+  }
+
+  effect(setInnerText, {
+    scheduler(fn) {
+      console.log('setInnerText');
+      jobQueue.add(fn);
+      flushJob();
+    },
+  });
+  effect(setTitle, {
+    scheduler(fn) {
+      jobQueue.add(fn);
+      flushJob();
+    },
+  });
+
+  setTimeout(() => {
+    obj.text = "my wife is jgg";
+    obj.text = "my wife is jggy";
+
+    obj.title = "i am subtitle";
+
+    Promise.resolve("i am what").then((val) => {
+      console.log("promise.then");
+      obj.title = val;
+    });
+  }, 2000);
+</script>

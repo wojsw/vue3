@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body></body>
+</html>
+<script>
+  // 注册副作用函数
+  let activeEffect;
+  function effect(fn) {
+    const effectFn = () => {
+      activeEffect = effectFn; // activeEffect = fn，会造成activeEffect始终为最后一个副作用函数
+      fn();
+    };
+    effectFn();
+  }
+  const data = { text: 1 };
+
+  // bucket(weakMap[target, map]) -> target1(map[key1, set]) -> key1(set[effect])
+  // 用proxy生成代理数据
+  const bucket = new WeakMap();
+  const obj = new Proxy(data, {
+    get(target, key) {
+        console.log('get');
+      if (!activeEffect) {
+        return;
+      }
+      let depsMap = bucket.get(target);
+      if (!depsMap) {
+        bucket.set(target, (depsMap = new Map()));
+      }
+
+      let deps = depsMap.get(key);
+      if (!deps) {
+        depsMap.set(key, (deps = new Set()));
+      }
+
+      deps.add(activeEffect);
+
+      return target[key];
+    },
+    set(target, key, newVal) {
+        console.log('set');
+      target[key] = newVal;
+
+      const depsMap = bucket.get(target);
+      if (!depsMap) return;
+      const effects = depsMap.get(key);
+
+      const effectsToRun = new Set();
+      effects.forEach((effect) => {
+        if (activeEffect !== effect) {
+          effectsToRun.add(effect);
+        }
+      });
+
+      effectsToRun &&
+        effectsToRun.forEach((effect) => {
+          effect();
+        });
+    },
+  });
+
+  function setInnerText() {
+    obj.text = obj.text + 1;
+  }
+  effect(setInnerText);
+</script>

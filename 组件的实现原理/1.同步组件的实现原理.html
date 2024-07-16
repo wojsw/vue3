@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+<script>
+  function patch(n1, n2, container, anchor) {
+    if (!n1) {
+      mountComponent();
+    } else {
+      patchComponent();
+    }
+  }
+  function reactive() {}
+  function effect() {}
+
+  const queue = new Set();
+  let isFlushing = false;
+  const p = Promise.resolve();
+
+  function queueJob(job) {
+    queue.add(job);
+
+    if (!isFlushing) {
+      isFlushing = true;
+      p.then(() => {
+        try {
+          queue.forEach((job) => job());
+        } finally {
+          isFlushing = false;
+          queue.length = 0;
+        }
+      });
+    }
+  }
+
+  function resolveProps(options, propsData) {
+    const props = {};
+    const attrs = {};
+
+    for (var key in propsData) {
+      if (key in options) {
+        props[key] = propsData[key];
+      } else {
+        attrs[key] = propsData[key];
+      }
+    }
+
+    return [props, attrs];
+  }
+
+  function shallowReactive() {}
+
+  function mountComponent(vnode, container, anchor) {
+    const componentOptions = vnode.type;
+
+    const { render, data, props: propsOption } = componentOptions;
+
+    beforeCreate && beforeCreate();
+
+    const state = reactive(data());
+    const [props, attrs] = resolveProps(propsOption, vnode.props);
+
+    const instance = {
+      state,
+      isMounted: false,
+      subTree: null,
+      props: shallowReactive(props),
+    };
+
+    vnode.component = instance;
+    created && created();
+    effect(
+      () => {
+        const subTree = render.call(state, state);
+        if (!instance.isMounted) {
+          beforeMount && beforeMount();
+          patch(null, subTree, container, anchor);
+          isMounted = true;
+          mounted && mounted();
+        } else {
+          beforeUpdate && beforeUpdate();
+          patch(instance.subTree, subTree, container, anchor);
+          updated && updated();
+        }
+
+        instance.subTree = subTree;
+      },
+      {
+        scheduler: queueJob,
+      }
+    );
+  }
+
+  function hasPropsChanged(prevProps, nextProps) {
+    const nextKeys = Object.keys(nextProps);
+  }
+
+  function patchComponent(n1, n2, anchor) {
+    const instance = (n2.component = n1.component);
+
+    const { props } = instance;
+    if (hasPropsChanged(n1.props, n2.props)) {
+      const [nextProps] = resolveProps(n2.type.props, n2.props);
+
+      for (var key in nextProps) {
+        props[k] = nextProps[k];
+      }
+
+      for (const k in props) {
+        if (!(k in nextProps)) delete nextProps[key];
+      }
+    }
+  }
+
+  const MyComponent = {
+    name: "MyComponent",
+    data() {
+      return {
+        foo: 1,
+      };
+    },
+    render() {
+      return {
+        type: "div",
+        children: `foo的值是：${this.foo}`,
+      };
+    },
+  };
+
+  const vnode = {
+    type: MyComponent,
+    props: {
+      title: "i am jsw",
+    },
+  };
+
+  mountComponent(vnode, document.getElementById("app"));
+</script>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+<script>
+  function shouldSetAsProps(el, key) {
+    if (el.tagName === "INPUT" && key === "form") {
+      return false;
+    }
+    return key in el;
+  }
+
+  function createRenderer(options) {
+    const { createElement, setElementText, insert, patchProps } = options;
+
+    function mountElement(vnode, container, anchor) {
+      const el = (vnode.el = createElement(vnode.type));
+
+      if (typeof vnode.children === "string") {
+        setElementText(el, vnode.children);
+      } else if (Array.isArray(vnode.children)) {
+        vnode.children.forEach((child) => {
+          patch(null, child, el);
+        });
+      }
+
+      if (vnode.props) {
+        for (const key in vnode.props) {
+          const value = vnode.props[key];
+          patchProps(el, key, null, value);
+        }
+      }
+
+      insert(container, el);
+    }
+
+    function unmount(vnode) {
+      const parent = vnode.el.parentNode;
+      if (parent) {
+        parent.removeChild(vnode.el);
+      }
+    }
+
+    function patchChildren(n1, n2, container) {
+      if (typeof n2.children === "string") {
+        if (Array.isArray(n1.children)) {
+          n1.children.forEach((c) => unmount(c));
+        }
+
+        setElementText(container, n2.children);
+      } else if (Array.isArray(n2.children)) {
+        if (Array.isArray(n1.children)) {
+          const oldChildren = n1.children;
+          const newChildren = n2.children;
+
+          const oldLen = oldChildren.length;
+          const newLen = newChildren.length;
+
+          const commonLength = Math.min(oldLen, newLen);
+          for (var i = 0; i < commonLength.length; i++) {
+            patch(oldChildren[i], newChildren[i], container);
+          }
+
+          if (newLen > oldLen) {
+            for (var i = commonLength; i < newChildren; i++) {
+              patch(null, newChildren[i], container);
+            }
+          }
+          if (newLen < oldLen) {
+            for (var i = commonLength; i < oldLen; i++) {
+              unmount(oldChildren[i]);
+            }
+          }
+        } else {
+          setElementText(container, "");
+          n2.children.forEach((c) => patch(null, c, container));
+        }
+      } else {
+        // 没有新
+        if (Array.isArray(n1.children)) {
+          n1.children.forEach((c) => unmount(c));
+        } else if (typeof n1.children === "string") {
+          setElementText(container, "");
+        }
+      }
+    }
+
+    function patchElement(n1, n2) {
+      const el = (n1.el = n2.el);
+      const oldProps = n1.props;
+      const newProps = n2.props;
+
+      for (const key in newProps) {
+        if (newProps[key] !== oldProps[key]) {
+          patchProps(el, key, oldProps[key], newProps[key]);
+        }
+      }
+
+      for (const key in oldProps) {
+        if (!(key in newProps)) {
+          patchProps(el, key, oldProps[key], null);
+        }
+      }
+
+      patchChildren(n1, n2, el);
+    }
+
+    function patch(n1, n2, container, anchor) {
+      if (n1 && n1.type !== n2.type) {
+        unmount(n1);
+        n1 = null;
+      }
+      if (!n1) {
+        // 挂载
+        mountElement(n2, container, anchor);
+      } else {
+        // 更新
+        patchElement(n1, n2);
+      }
+    }
+
+    function render(vnode, container) {
+      if (vnode) {
+        patch(container._vnode, vnode, container);
+      } else {
+        // 卸载
+        if (container._vnode) {
+          unmount(container._vnode);
+        }
+      }
+      container._vnode = vnode;
+    }
+    return { render };
+  }
+
+  const renderer = createRenderer({
+    createElement(tag) {
+      return document.createElement(tag);
+    },
+    setElementText(el, text) {
+      el.textContent = text;
+    },
+    insert(el, parent, anchor = null) {
+      parent.insertBefore(el, anchor);
+    },
+    // onClick: ()=>{}
+    patchProps(el, key, prevValue, nextValue) {
+      if (/^on/.test(key)) {
+        let invoker = el._vei;
+        const name = key.slice(2).toLowerCase();
+        if (nextValue) {
+          if (!invoker) {
+            invoker = el._vei = (e) => {
+              invoker.value(e);
+            };
+            invoker.value = nextValue;
+            el.addEventListener(name, invoker);
+          } else {
+            invoker.value = nextValue;
+          }
+        } else if (invoker) {
+          el.removeEventListener(name, invoker);
+        }
+      } else if (key === "class") {
+        el.className = vnode.props[key];
+      } else if (shouldSetAsProps(el, key)) {
+        const type = typeof el[key];
+        if (type === "boolean" && nextValue === "") {
+          el[key] = true;
+        } else {
+          el[key] = value;
+        }
+      } else {
+        el.setAttributes(key, vnode.props[key]);
+      }
+    },
+  });
+
+  const vnode = {
+    type: "button",
+    children: "hello world",
+    props: {
+      onClick: () => {
+        alert(1);
+      },
+    },
+  };
+
+  renderer.render(vnode, document.getElementById("app"));
+</script>

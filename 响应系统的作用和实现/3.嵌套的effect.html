@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body></body>
+</html>
+<script>
+  // 注册副作用函数
+  let activeEffect;
+  const effectStack = [];
+  // effect1 -> effect2 ->
+  function effect(fn) {
+    const effectFn = () => {
+      activeEffect = effectFn; // activeEffect = fn，会造成activeEffect始终为最后一个副作用函数
+      effectStack.push(effectFn);
+      fn();
+      effectStack.pop();
+      activeEffect = effectStack[effectStack.length - 1];
+    };
+    effectFn();
+  }
+  const data = { foo: true, bar: true };
+
+  // 用proxy生成代理数据 bucket(weakMap[target, map]) -> target1(map[key1, set]) -> key1(set[effect])
+  const bucket = new WeakMap();
+  const obj = new Proxy(data, {
+    get(target, key) {
+      if (!activeEffect) {
+        return;
+      }
+      let depsMap = bucket.get(target);
+      if (!depsMap) {
+        bucket.set(target, (depsMap = new Map()));
+      }
+
+      let deps = depsMap.get(key);
+      if (!deps) {
+        depsMap.set(key, (deps = new Set()));
+      }
+
+      deps.add(activeEffect);
+
+      return target[key];
+    },
+    set(target, key, newVal) {
+      target[key] = newVal;
+      const depsMap = bucket.get(target);
+      if (!depsMap) return;
+      const effects = depsMap.get(key);
+      effects.forEach((effect) => effect());
+    },
+  });
+
+  // 组件发生嵌套时,副作用函数也会发生嵌套
+  //   const Bar = {
+  //     render() {},
+  //   };
+
+  //   const Foo = {
+  //     render() {
+  //       return <Bar />;
+  //     },
+  //   };
+  let tmp1, tmp2;
+  // activeEffect 一直是effect2 需要一个副作用函数栈
+  effect(function effect1() {
+    console.log("effect1");
+    effect(function effect2() {
+      console.log("effect2");
+      tmp2 = obj.bar;
+    });
+    tmp1 = obj.foo;
+  });
+
+  setTimeout(() => {
+    obj.foo = false;
+  }, 3000);
+</script>

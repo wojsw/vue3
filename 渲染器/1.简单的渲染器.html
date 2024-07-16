@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+<script>
+  function shouldSetAsProps(el, key, value) {
+    if (key === "form" && el.tagName === "INPUT") return false;
+
+    return key in el;
+  }
+  function createRenderer(options) {
+    const { createElement, setElementText, insert, patchProps } = options;
+
+    function mountElement(vnode, container) {
+      const el = (vnode.el = createElement(vnode.type));
+      // 文本节点
+      if (typeof vnode.children === "string") {
+        setElementText(el, vnode.children);
+      } else if (Array.isArray(vnode.children)) {
+        // 子节点是数组
+        vnode.children.forEach((child) => {
+          patch(null, child, el);
+        });
+      }
+
+      if (vnode.props) {
+        for (var key in vnode.props) {
+          const value = vnode.props[key];
+
+          patchProps(el, key, null, value);
+        }
+      }
+      insert(container, el);
+    }
+
+    function unmount(vnode) {
+      const parent = vnode.el.parentNode;
+      if (parent) {
+        parent.removeChild(vnode.el);
+      }
+    }
+
+    function patchChildren(n1, n2, container) {
+      if (typeof n2.children === "string") {
+        if (Array.isArray(n1.children)) {
+          n1.children.forEach((c) => unmount(c));
+        }
+
+        setElementText(container, n2.children);
+      } else if (Array.isArray(n2.children)) {
+        if (Array.isArray(n1.children)) {
+          n1.children.forEach(c => unmount(c))
+          n2.children.forEach(c => patch(null, c, container))
+        } else {
+          setElementText(container, '')
+        }
+      } else {
+        setElementText(container, '');
+        n2.children.forEach(c => patch(null, c, container))
+      }
+    }
+
+    function patchElement(n1, n2) {
+      const el = (n1.el = n2.el);
+
+      const oldProps = n1.props;
+      const newProps = n2.props;
+
+      for (const key in newProps) {
+        if (newProps[key] !== oldProps[key]) {
+          patchProps(el, key, oldProps[key], newProps[key]);
+        }
+      }
+
+      for (const key in oldProps) {
+        if (!(key in newProps)) {
+          patchProps(el, key, oldProps[key], null);
+        }
+      }
+
+      patchChildren(n1, n2, el);
+    }
+
+    function patch(n1, n2, container) {
+      if (n1 && n1.type !== n2.type) {
+        unmount(n1);
+        n1 = null;
+      }
+
+      const { type } = n2.type;
+      if (typeof type === "string") {
+        // 有新没旧 挂载
+        if (!n1) {
+          mountElement(n2, container);
+        } else {
+          // 有新有旧
+          patchElement(n1, n2);
+        }
+      } else if (typeof type === "object") {
+      }
+    }
+
+    function render(vnode, container) {
+
+      if (vnode) {
+        // patch
+        patch(container._vnode, vnode, container);
+      } else {
+        // 卸载
+        if (container._vnode) {
+          unmount(container._vnode);
+        }
+      }
+
+      container._vnode = vnode;
+    }
+    return {
+      render,
+    };
+  }
+
+  const vnode = {
+    type: "button",
+    children: "hello world",
+    props: {
+      disabled: "",
+    },
+  };
+  const renderer = createRenderer({
+    createElement(tag) {
+      return document.createElement(tag);
+    },
+    setElementText(el, text) {
+      el.textContent = text;
+    },
+    insert(parent, el) {
+      parent.insertBefore(el, null);
+    },
+    patchProps(el, key, prevValue, nextValue) {
+      if (/^on/.test(key)) {
+        let invoker = el._vei;
+
+        const name = key.slice(2).toLowerCase();
+        if (nextValue) {
+          if (!invoker) {
+            invoker = el._vei = (e) => {
+              invoker.value(e);
+            };
+            invoker.value = nextValue;
+            el.addEventListener(name, invoker);
+          } else {
+            invoker.value = nextValue;
+          }
+        } else if (invoker) {
+          el.removeEventListener(name, invoker);
+        }
+      } else if (key === "class") {
+        el.className = "nextValue" || "";
+      } else if (shouldSetAsProps(el, key, nextValue)) {
+        const type = typeof el[key];
+
+        if (type === "boolean" && nextValue === "") {
+          el[key] = true;
+        } else {
+          el[key] = nextValue;
+        }
+      }
+      // 用in操作符判断key是否存在对应的DOM Properties
+      else {
+        console.log("??????");
+        // 要设置的key没有对应的DOM Properties，使用setAttribute函数设置属性
+        el.setAttribute(key, nextValue);
+      }
+    },
+  });
+  renderer.render(vnode, document.getElementById("app"));
+</script>

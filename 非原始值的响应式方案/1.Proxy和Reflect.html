@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body></body>
+</html>
+
+<script>
+  // proxy代理的是对象的基本语义
+  const obj = {
+    a: "a",
+    fn: function () {},
+    get a() {
+      return this.a;
+    },
+  };
+  obj.a; // 基本操作
+  obj.fn(); // 复合操作
+
+  // Reflect和proxy上的方法一致，区别是能接收receiver参数，表示谁访问的变量，也就是this指针
+
+  con;
+</script>

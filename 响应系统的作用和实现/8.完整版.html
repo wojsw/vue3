@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="title"></div>
+    <div id="text"></div>
+    <div id="content"></div>
+  </body>
+</html>
+<script>
+  const data = {
+    title: "i am title",
+    text: "i am text",
+    ok: true,
+    foo: "foo",
+    bar: "bar",
+  };
+  // 清除没必要在执行的effect
+  function cleanup(effectFn) {
+    for (var i = 0; i < effectFn.deps.length; i++) {
+      const deps = effectFn.deps[i];
+
+      deps.delete(effectFn);
+    }
+  }
+  let activeEffect;
+  // 嵌套effect
+  const effectStack = [];
+  function effect(fn, options) {
+    const effectFn = () => {
+      cleanup(effectFn);
+
+      activeEffect = effectFn;
+
+      effectStack.push(effectFn);
+      const res = fn();
+      effectStack.pop();
+      activeEffect = effectStack[effectStack.length - 1];
+
+      return res;
+    };
+    effectFn.deps = [];
+    effectFn.options = options;
+    if (!options.lazy) {
+      console.log('adsdfdsfssdf');
+      effectFn();
+    }
+
+    return effectFn;
+  }
+  function track(target, key) {
+    if (!activeEffect) return;
+    let depsMap = bucket.get(target);
+    if (!depsMap) {
+      bucket.set(target, (depsMap = new Map()));
+    }
+
+    let deps = depsMap.get(key);
+    if (!deps) {
+      depsMap.set(key, (deps = new Set()));
+    }
+    activeEffect.deps.push(deps);
+    deps.add(activeEffect);
+  }
+  function trigger(target, key) {    
+    const depsMap = bucket.get(target);
+    if (!depsMap) return;
+
+    const effects = depsMap.get(key);
+    const effectsToRun = new Set();
+    effects &&
+      effects.forEach((effect) => {
+        if (activeEffect !== effect) {
+          effectsToRun.add(effect);
+        }
+      });
+
+    effectsToRun.forEach((effect) => {
+      if (effect.options && effect.options.scheduler) {
+        effect.options.scheduler(effect);
+      } else {
+        effect();
+      }
+    });
+  }
+  let bucket = new WeakMap();
+  const obj = new Proxy(data, {
+    get(target, key) {
+      track(target, key);
+      return target[key];
+    },
+    set(target, key, newVal) {
+      target[key] = newVal;
+      trigger(target, key);
+    },
+  });
+
+  function setTitle() {
+    document.getElementById("title").innerText = obj.title;
+  }
+  function setInnerText() {
+    document.getElementById("text").innerText = obj.ok ? obj.text : "not";
+  }
+  // 调度执行
+  let isFlushing = false;
+  const p = Promise.resolve();
+  const jobQueue = new Set();
+  const flushJob = () => {
+    if (isFlushing) {
+      return;
+    }
+    isFlushing = true;
+
+    p.then(() => {
+      jobQueue.forEach((fn) => fn());
+      isFlushing = false;
+    }).finally(() => {
+      isFlushing = false;
+    });
+  };
+
+  // effect(setTitle, {
+  //   scheduler(fn) {
+  //     jobQueue.add(fn);
+  //     flushJob();
+  //   },
+  // });
+  effect(setInnerText, {
+    scheduler(fn) {
+      jobQueue.add(fn);
+      flushJob();
+    },
+  });
+
+  setTimeout(() => {
+    // obj.title = "i am changeTitle";
+    // obj.title = "i am changeTitle1";
+
+    // obj.title = "i am changeTitle2";
+
+    // obj.ok = false;
+    obj.text = "i am changeText";
+
+    // new Promise((resolve) => {
+    //   resolve();
+    // }).then(() => {
+    //   obj.title = "i am changeTitle3";
+    // });
+  }, 3000);
+
+  let tmp1, tmp2;
+  // 嵌套effect
+  effect(function effect1() {
+    effect(function effect2() {
+      tmp2 = obj.bar;
+    });
+    tmp1 = obj.foo;
+  });
+
+  setTimeout(() => {
+    obj.foo = "fooooo";
+  }, 2000);
+
+  // computed
+  function computed(getter) {
+    let dirty = true;
+    let value;
+    const effectFn = effect(getter, {
+      lazy: true,
+      scheduler(fn) {
+
+        dirty = true;
+      },
+    });
+
+    const obj = {
+      get value() {
+        if (dirty) {
+          value = effectFn();
+          dirty = false;
+        }
+        return value;
+      },
+    };
+
+    return obj;
+  }
+
+  const contentRef = computed(() => {
+    console.log(obj.title + "," + obj.text);
+    return obj.title + "," + obj.text;
+  });
+
+  setTimeout(() => {
+    obj.title = "123";
+  }, 2000);
+  console.log(contentRef.value);
+
+  function traverse(value, seen = new Set()) {
+    if (typeof value !== "object" || value === null || seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+
+    for (const k in value) {
+      traverse(value[k], seen);
+    }
+
+    return value;
+  }
+
+  function watch(source, cb) {
+    let getter;
+    if (typeof source === "function") {
+      getter = source;
+    } else {
+      getter = () => traverse(source);
+    }
+
+    let oldValue, newValue;
+
+    const effectFn = effect(() => {
+      getter,
+        {
+          lazy: true,
+          scheduler() {
+            newValue = effectFn();
+            cb(newValue, oldValue);
+            oldValue = newValue;
+          },
+        };
+    });
+    oldValue = effectFn();
+  }
+
+  watch(
+    () => {
+      return obj.foo;
+    },
+    (newVal, oldVal) => {
+      console.log(newVal, oldVal);
+    }
+  );
+</script>

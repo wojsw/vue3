@@ -1,0 +1,47 @@
+<script>
+  const reactiveMap = new Map();
+  function createReactive(target) {
+    const proxy = new Proxy(target, {});
+  }
+  function reactive(target) {
+    const existionProxy = reactiveMap.get(target);
+    if (existionProxy) return existionProxy;
+
+    const proxy = createReactive(target);
+    reactiveMap.set(target, proxy);
+
+    return proxy;
+  }
+  function ref(val) {
+    const wrapper = {
+      value: val,
+    };
+
+    Object.defineProperty(wrapper, "__v_isRef", {
+      value: true,
+    });
+    return reactive(wrapper);
+  }
+
+  const fooRef = ref("foo");
+
+  function toRef(obj, key) {
+    const wrapper = {
+      get value() {
+        return obj[key];
+      },
+    };
+
+    return wrapper;
+  }
+
+  function toRefs(obj) {
+    const ret = {};
+
+    for (var key in obj) {
+      ret[key] = toRef(obj, key);
+    }
+
+    return ret;
+  }
+</script>
